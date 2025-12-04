@@ -169,3 +169,4 @@ logs/
 - Deterministic trace logging  
 - Visual analytics dashboard  
 - Step-level timing and accuracy reporting  
+
