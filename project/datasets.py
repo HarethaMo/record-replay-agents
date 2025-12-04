@@ -17,6 +17,34 @@ from __future__ import annotations
 
 from typing import List, Dict
 
+BASIC_MATH_SAMPLES: List[Dict[str, str]] = [
+    {
+        "id": "basic_math_1",
+        "question": "5 + 15 + 10 = ?",
+        "answer": "30",
+    },
+    {
+        "id": "basic_math_2",
+        "question": "10 + 5 + 7 + 4 = ?",
+        "answer": "26",
+    },
+    {
+        "id": "basic_math_3",
+        "question": "10 + 8 + 20 + 7 + 5 = ?",
+        "answer": "50",
+    },
+    {
+        "id": "basic_math_4",
+        "question": "(1 + 9) - (2 + 3) = ?",
+        "answer": "5",
+    },
+    {
+        "id": "basic_math_5",
+        "question": "20 - 5 + 10 - 3 = ?",
+        "answer": "22",
+    },
+    
+]
 
 GSM8K_SAMPLES: List[Dict[str, str]] = [
     # {

@@ -1,0 +1,5 @@
+{"dataset": "basic_math", "condition": "base", "run_index": 0, "success": false, "time": 12.538392305374146}
+{"dataset": "basic_math", "condition": "stochastic_no_rr", "run_index": 0, "success": false, "time": 6.389065265655518}
+{"dataset": "basic_math", "condition": "stochastic_rr", "run_index": 0, "success": false, "time": 6.321112394332886}
+{"dataset": "basic_math", "condition": "logical_agent_replacement_rr", "run_index": 0, "success": true, "time": 20.904869318008423}
+{"dataset": "basic_math", "condition": "logical_prompt_change_rr", "run_index": 0, "success": true, "time": 40.88161516189575}

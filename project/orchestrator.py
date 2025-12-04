@@ -13,11 +13,14 @@ from .config import (
     BASE_BACKEND,
     DEFAULT_NUM_AGENTS,
     LARGE_BACKEND,
-    OpenAI_BACKEND,
+    LARGE_OPENAI_BACKEND,
+    MINI_OPENAI_BACKEND,
     MAX_RETRIES_PER_STEP,
     RANDOM_SEED,
     RUN_LOG_PATH,
     STOCHASTIC_FAIL_PROB,
+    STOCHASTIC_DELAY_MIN,
+    STOCHASTIC_DELAY_MAX,
 )
 from .coordinator import Coordinator
 from .evaluator import StepEvaluator
@@ -79,10 +82,11 @@ class Orchestrator:
         random.seed(RANDOM_SEED)
         self.base_client = LLMClient(BASE_BACKEND)
         self.large_client = LLMClient(LARGE_BACKEND)
-        self.openai_client = LLMClient(OpenAI_BACKEND)
-        self.coord = Coordinator(self.openai_client)
+        self.large_openai_client = LLMClient(LARGE_OPENAI_BACKEND)
+        self.mini_openai_client = LLMClient(MINI_OPENAI_BACKEND)
+        self.coord = Coordinator(self.large_openai_client)
         # We use the large backend as evaluator by default (stricter).
-        self.evaluator = StepEvaluator(self.openai_client)
+        self.evaluator = StepEvaluator(self.mini_openai_client)
         self.step_agent = StepAgent(self.base_client, self.large_client)
 
     # ------------------------------------------------------------------ core
@@ -94,7 +98,7 @@ class Orchestrator:
         mode: Mode,
         num_agents: int = DEFAULT_NUM_AGENTS,
         enable_interventions: bool = True,
-        logical_strategy: str = "all",
+        logical_strategy: str = "base",
     ) -> RunLog:
         """Run one problem through the multi-agent pipeline.
 
@@ -104,6 +108,9 @@ class Orchestrator:
         - metrics including elapsed time in seconds (metrics["elapsed_sec"])
         """
         start_time = time.time()
+        first_forced_failure_time: Optional[float] = None
+        num_forced_stochastic_failures = 0
+        num_logical_retries = 0
 
         question = problem["question"]
         gold_answer_str = problem["answer"]
@@ -112,18 +119,45 @@ class Orchestrator:
         except Exception:
             gold_answer = None
 
-        steps_text, coord_trace = self.coord.decompose(question, num_agents)
+        requested_num_agents = num_agents
 
+        steps_text, coord_trace = self.coord.decompose(question, requested_num_agents)
+        
+        actual_num_agents = min(requested_num_agents, len(steps_text))
+        steps_text = steps_text[:actual_num_agents]
+        
+        print(f"\n===================\nRunning Problem: {question}.\nDecomposed into {actual_num_agents} steps. \nMode: {mode}. Interventions enabled: {enable_interventions}.\n")
+        
+        if actual_num_agents == 0:
+            # No steps to run; terminate early.
+            return RunLog(
+                run_id=f"{problem['id']}-{int(time.time()*1000)}",
+                timestamp=time.time(),
+                dataset="unknown",
+                problem_id=problem["id"],
+                question=question,
+                gold_answer=gold_answer_str,
+                mode=mode,
+                num_agents=num_agents,
+                success=False,
+                final_numeric_answer=None,
+                final_answer_text=None,
+                steps=[],
+                metrics={
+                    "num_forced_stochastic_failures": 0,
+                    "num_logical_retries": 0,
+                    "terminated_early": True,
+                    "terminated_reason": "no_steps_decomposed",
+                    "elapsed_sec": time.time() - start_time,
+                },
+            )
+        
         step_logs: List[StepLog] = [
             StepLog(step_index=i, description=desc) for i, desc in enumerate(steps_text)
         ]
 
-
-        num_forced_stochastic_failures = 0
-        num_logical_retries = 0
-
         # Sequentially execute each step.
-        for i in range(num_agents):
+        for i in range(actual_num_agents):
             step_log = step_logs[i]
 
             # helper to early-terminate run
@@ -156,16 +190,35 @@ class Orchestrator:
                         "terminated_early": True,
                         "terminated_reason": reason,
                         "elapsed_sec": elapsed,
+                        "time_until_first_forced_failure": first_forced_failure_time,
+
                     },
                 )
 
             # ----------------------- STOCHASTIC MODE -----------------------
-            if mode == "stochastic":
+            if mode in ["stochastic-no-rr", "stochastic-rr"]:
                 retry_count = 0
                 while True:
                     # With some probability, we *pretend* this step failed.
-                    if retry_count == 0 and random.random() < STOCHASTIC_FAIL_PROB:
+                    if random.random() < STOCHASTIC_FAIL_PROB:
+                        # add time delay to simulate LLM call
+                        delay = random.uniform(STOCHASTIC_DELAY_MIN, STOCHASTIC_DELAY_MAX)
+                        time.sleep(delay)
+                        # run a dummy failed attempt
+                        self.step_agent.run_step(
+                            step_index=i,
+                            problem=question,
+                            step_description=step_log.description,
+                            previous_steps=[
+                                att for s in step_logs[:i] for att in s.attempts[-1:]],
+                            strategy="base",
+                        )
+                        print("Forced stochastic failure on step", i)
+
                         num_forced_stochastic_failures += 1
+                        if first_forced_failure_time is None:
+                            first_forced_failure_time = time.time() - start_time
+                            
                         step_log.evaluation_history.append(
                             {
                                 "step_index": i,
@@ -188,13 +241,43 @@ class Orchestrator:
                         problem=question,
                         step_description=step_log.description,
                         previous_steps=[
-                            att for s in step_logs[:i] for att in s.attempts[-1:]
-                        ],
+                            att for s in step_logs[:i] for att in s.attempts[-1:]],
                         strategy="base",
                     )
                     step_log.attempts.append(attempt)
-                    # We accept whatever the base agent produced; move on.
+                    
+                    attempts_dict = [asdict(a) for a in step_log.attempts]
+                    eval_res = self.evaluator.evaluate(
+                        problem=question,
+                        steps=steps_text,
+                        step_index=i,
+                        attempts=attempts_dict,
+                        final_answer=gold_answer_str,
+                    )
+                    step_log.evaluation_history.append(
+                        {
+                            "step_index": i,
+                            "attempt_index": len(step_log.attempts) - 1,
+                            "decision": eval_res.decision,
+                            "confidence": eval_res.confidence,
+                            "comment": eval_res.comment,
+                            "eval_trace": {
+                                "messages": eval_res.trace.messages,
+                                "params": eval_res.trace.params,
+                                "response_text": eval_res.trace.response_text,
+                                "provider": eval_res.trace.provider,
+                                "model": eval_res.trace.model,
+                            },
+                            "mode": "stochastic",
+                        }
+                    )
+                    
+                    if eval_res.decision == "retry":
+                        return terminate_early("logical_failure_in_stochastic_mode")
+
+                    # Otherwise accept this step and move on
                     break
+            
 
                 continue  # next step
 
@@ -257,14 +340,7 @@ class Orchestrator:
             num_logical_retries += 1
 
             # Choose strategy for this retry
-            if logical_strategy == "agent_replacement":
-                retry_strategy = "agent_replacement"
-            elif logical_strategy == "prompt_change":
-                retry_strategy = "prompt_change"
-            elif logical_strategy == "param_change":
-                retry_strategy = "param_change"
-            else:  # "all" -> simple default; here we just pick agent_replacement
-                retry_strategy = "agent_replacement"
+            retry_strategy = logical_strategy
 
             attempt1 = self.step_agent.run_step(
                 step_index=i,
@@ -341,6 +417,9 @@ class Orchestrator:
                 "terminated_early": False,
                 "terminated_reason": None,
                 "elapsed_sec": elapsed,
+                "time_until_first_forced_failure": first_forced_failure_time,
+                "requested_num_agents": requested_num_agents,
+                "actual_num_agents": actual_num_agents,
                 "coordinator_trace": {
                     "messages": coord_trace.messages,
                     "params": coord_trace.params,

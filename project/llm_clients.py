@@ -11,14 +11,12 @@ Backends:
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-try:
-    from openai import OpenAI  # type: ignore
-except Exception:  # pragma: no cover
-    OpenAI = None  # type: ignore
+
+from openai import OpenAI  # type: ignore
+
 
 from .config import LLMBackendConfig
 
@@ -26,7 +24,6 @@ from .config import LLMBackendConfig
 class ChatResult:
     content: str
     raw: Any
-
 
 class LLMClient:
     """Simple chat client for either OpenAI or local transformers models."""

@@ -1,0 +1,27 @@
+{
+  "base": {
+    "acc": 0.0,
+    "time": 12.538392305374146,
+    "runs": 1
+  },
+  "stochastic_no_rr": {
+    "acc": 0.0,
+    "time": 6.389065265655518,
+    "runs": 1
+  },
+  "stochastic_rr": {
+    "acc": 0.0,
+    "time": 6.321112394332886,
+    "runs": 1
+  },
+  "logical_agent_replacement_rr": {
+    "acc": 1.0,
+    "time": 20.904869318008423,
+    "runs": 1
+  },
+  "logical_prompt_change_rr": {
+    "acc": 1.0,
+    "time": 40.88161516189575,
+    "runs": 1
+  }
+}

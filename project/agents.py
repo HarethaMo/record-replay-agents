@@ -84,13 +84,16 @@ class StepAgent:
         else:
             # Base agent: no chain of thought, output only the numeric answer
             system_msg = (
-                "You are a math agent. Solve ONLY the assigned step.\n"
+                "You are a math agent. Given a math problem, you will Solve ONLY the assigned step.\n"
                 "Output ONLY the final numeric result wrapped exactly like:\n"
                 "<answer>NUMERIC_VALUE</answer>\n\n"
                 "NO explanations. NO reasoning. NO extra text before or after the <answer> tag."
             )
 
             user_msg = (
+                f"Full problem:\n{problem}\n\n"
+                f"{history}"
+                f"You are solving ONLY the following step of the math problem.\n\n"
                 f"Step to solve:\n{step_description}\n\n"
                 "Return ONLY:\n"
                 "<answer>NUMERIC_VALUE</answer>"

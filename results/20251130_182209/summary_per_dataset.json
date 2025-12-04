@@ -1,0 +1,19 @@
+{
+  "basic_math": {
+    "base": {
+      "acc": 0.6,
+      "time": 23.05928478240967,
+      "runs": 5
+    },
+    "stochastic_rr": {
+      "acc": 0.6,
+      "time": 23.68185133934021,
+      "runs": 5
+    },
+    "stochastic_no_rr": {
+      "acc": 0.4,
+      "time": 18.83449783325195,
+      "runs": 5
+    }
+  }
+}

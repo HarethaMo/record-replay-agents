@@ -32,9 +32,11 @@ from typing import Dict, List
 
 from tqdm import tqdm  # progress bar
 import os
+import json
+from datetime import datetime
 
 from .config import DEFAULT_NUM_AGENTS, RUN_LOG_PATH
-from .datasets import GSM8K_HARD_SAMPLES, GSM8K_SAMPLES
+from .datasets import GSM8K_HARD_SAMPLES, GSM8K_SAMPLES, BASIC_MATH_SAMPLES
 from dataclasses import asdict
 from .orchestrator import Orchestrator, append_run_log
 
@@ -43,10 +45,10 @@ def warmup(orch: Orchestrator, num_agents: int) -> None:
 
     This is NOT logged and NOT included in metrics.
     """
-    if not GSM8K_SAMPLES:
+    if not BASIC_MATH_SAMPLES:
         return
 
-    dummy = GSM8K_SAMPLES[0]
+    dummy = BASIC_MATH_SAMPLES[0]
     q = dummy["question"]
     # 1) Coordinator warmup
     steps_text, coord_trace = orch.coord.decompose(q, num_agents)
@@ -68,17 +70,17 @@ def warmup(orch: Orchestrator, num_agents: int) -> None:
         strategy="agent_replacement",  # uses the "large" client
     )
 
-    # 3) Evaluator warmup
-    attempts_dict = [asdict(base_attempt), asdict(large_attempt)]
-    orch.evaluator.evaluate(
-        problem=q,
-        steps=steps_text,
-        step_index=0,
-        attempts=attempts_dict,
-        final_answer=dummy["answer"],
-    )
+    # # 3) Evaluator warmup
+    # attempts_dict = [asdict(base_attempt), asdict(large_attempt)]
+    # orch.evaluator.evaluate(
+    #     problem=q,
+    #     steps=steps_text,
+    #     step_index=0,
+    #     attempts=attempts_dict,
+    #     final_answer=dummy["answer"],
+    # )
 
-    # nothing returned, nothing logged
+    # # nothing returned, nothing logged
 
 def run_benchmark(
     suite: str = "all",
@@ -91,23 +93,24 @@ def run_benchmark(
     print("Warmup done. Starting benchmark.\n")
     
     datasets = [
-        ("gsm8k", GSM8K_SAMPLES),
+        ("basic_math", BASIC_MATH_SAMPLES),
+        # ("gsm8k", GSM8K_SAMPLES),
         # ("gsm8k_hard", GSM8K_HARD_SAMPLES),
     ]
 
     # Define experimental conditions with their orchestrator configs.
     all_conditions = {
         # Support base runs without any intervention.
-        "base": dict(mode="logical", enable_interventions=False, logical_strategy="all"),
+        "base": dict(mode="base", enable_interventions=False, logical_strategy="base"),
         # Stochastic failures: compare no interventions vs recall (re-run the step).
-        "stochastic_no_rr": dict(mode="stochastic", enable_interventions=False),
-        "stochastic_rr": dict(mode="stochastic", enable_interventions=True),
+        "stochastic_no_rr": dict(mode="stochastic-no-rr", enable_interventions=False),
+        "stochastic_rr": dict(mode="stochastic-rr", enable_interventions=True),
         # Logical failures: compare base vs each replacement method.
         "logical_agent_replacement_rr": dict(
-            mode="logical", enable_interventions=True, logical_strategy="agent_replacement"
+            mode="logical-agent-replacement-rr", enable_interventions=True, logical_strategy="agent_replacement"
         ),
         "logical_prompt_change_rr": dict(
-            mode="logical", enable_interventions=True, logical_strategy="prompt_change"
+            mode="logical-prompt-change-rr", enable_interventions=True, logical_strategy="prompt_change"
         ),
         # "logical_param_change_rr": dict(
         #     mode="logical", enable_interventions=True, logical_strategy="param_change"
@@ -117,7 +120,7 @@ def run_benchmark(
     if suite == "base":
         selected_conditions = ["base"]
     elif suite == "stochastic":
-        selected_conditions = ["base", "stochastic_no_rr", "stochastic_rr"]
+        selected_conditions = ["base", "stochastic_rr"]
     elif suite == "logical":
         selected_conditions = [
             "base",
@@ -152,11 +155,49 @@ def run_benchmark(
                         {
                             "success": bool(run.success),
                             "time": elapsed,
+                            "metrics": run.metrics,
                         }
                     )
 
                     pbar.update(1)
 
+    # ============================================
+    # Synthesise stochastic_no_rr from stochastic_rr
+    # ============================================
+    for dataset_name, conds in list(results.items()):
+        if "stochastic_rr" not in conds:
+            continue
+
+        synthetic_no_rr: list[dict] = []
+        for rec in conds["stochastic_rr"]:
+            m = rec.get("metrics", {}) or {}
+            forced = m.get("num_forced_stochastic_failures", 0) or 0
+            t_first = m.get("time_until_first_forced_failure")
+
+            # Hypothetical no-RR success:
+            # - if no forced failures → same success as observed
+            # - if there was a forced failure → this episode would FAIL
+            if forced == 0:
+                success_no_rr = rec["success"]
+                time_no_rr = rec["time"]
+            else:
+                success_no_rr = False
+                # If we know when the first forced failure happened, use that as time;
+                # otherwise, fall back to total time (conservative).
+                time_no_rr = t_first if t_first is not None else rec["time"]
+
+            synthetic_no_rr.append(
+                {
+                    **rec,
+                    "success": success_no_rr,
+                    "time": time_no_rr,
+                }
+            )
+
+        # Register synthetic condition
+        conds["stochastic_no_rr"] = synthetic_no_rr
+        
+    # ============================================
     # Print summary table
     print("\n=== Multi-Agent Math Benchmark Results ===")
     print(f"Num agents (steps): {num_agents}")
@@ -226,6 +267,143 @@ def run_benchmark(
             )
     print()
 
+    # ================== SAVE RESULTS TO DISK ==================
+
+    # 1) Create timestamped results directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_results_dir = "results"
+    out_dir = os.path.join(base_results_dir, timestamp)
+    runs_dir = os.path.join(out_dir, "runs")
+
+    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(runs_dir, exist_ok=True)
+
+    # -----------------------------
+    # Helper: write Markdown tables
+    # -----------------------------
+    def write_markdown_table(path: str, header: list[str], rows: list[list[str]]) -> None:
+        with open(path, "w", encoding="utf-8") as f:
+            # header row
+            f.write("| " + " | ".join(header) + " |\n")
+            # separator
+            f.write("| " + " | ".join(["---"] * len(header)) + " |\n")
+            # data rows
+            for row in rows:
+                f.write("| " + " | ".join(row) + " |\n")
+
+    # -----------------------------
+    # 2) Per-dataset summary
+    # -----------------------------
+    # JSON
+    per_dataset_json_path = os.path.join(out_dir, "summary_per_dataset.json")
+    with open(per_dataset_json_path, "w", encoding="utf-8") as f:
+        json.dump(summary_per_dataset, f, indent=2, ensure_ascii=False)
+
+    # Markdown
+    per_dataset_md_rows: list[list[str]] = []
+    for dataset_name, conds in summary_per_dataset.items():
+        for cond_name, stats in conds.items():
+            per_dataset_md_rows.append([
+                dataset_name,
+                cond_name,
+                str(stats["runs"]),
+                f"{stats['acc'] * 100:.2f}",
+                f"{stats['time']:.2f}",
+            ])
+
+    per_dataset_md_path = os.path.join(out_dir, "summary_per_dataset.md")
+    write_markdown_table(
+        per_dataset_md_path,
+        header=["Dataset", "Condition", "Runs", "Accuracy (%)", "Avg time (s)"],
+        rows=per_dataset_md_rows,
+    )
+
+    # -----------------------------
+    # 3) Overall summary
+    # -----------------------------
+    # JSON
+    overall_json_path = os.path.join(out_dir, "summary_overall.json")
+    with open(overall_json_path, "w", encoding="utf-8") as f:
+        json.dump(overall_summary, f, indent=2, ensure_ascii=False)
+
+    # Markdown
+    overall_md_rows: list[list[str]] = []
+    for cond_name, stats in overall_summary.items():
+        overall_md_rows.append([
+            cond_name,
+            str(stats["runs"]),
+            f"{stats['acc'] * 100:.2f}",
+            f"{stats['time']:.2f}",
+        ])
+
+    overall_md_path = os.path.join(out_dir, "summary_overall.md")
+    write_markdown_table(
+        overall_md_path,
+        header=["Condition", "Runs", "Accuracy (%)", "Avg time (s)"],
+        rows=overall_md_rows,
+    )
+
+    # -----------------------------
+    # 4) Deltas vs base (if base exists)
+    # -----------------------------
+    deltas: dict[str, dict[str, float]] = {}
+
+    if base_overall:
+        base_acc = base_overall["acc"]
+        base_time = base_overall["time"]
+
+        for cond_name, stats in overall_summary.items():
+            if cond_name == "base":
+                continue
+            d_acc = (stats["acc"] - base_acc) * 100.0  # percentage points
+            d_time = stats["time"] - base_time
+            deltas[cond_name] = {
+                "delta_accuracy_ppts": d_acc,
+                "delta_time": d_time,
+            }
+
+        # JSON
+        deltas_json_path = os.path.join(out_dir, "summary_deltas_vs_base.json")
+        with open(deltas_json_path, "w", encoding="utf-8") as f:
+            json.dump(deltas, f, indent=2, ensure_ascii=False)
+
+        # Markdown
+        deltas_md_rows: list[list[str]] = []
+        for cond_name, d in deltas.items():
+            deltas_md_rows.append([
+                cond_name,
+                f"{d['delta_accuracy_ppts']:.2f}",
+                f"{d['delta_time']:.2f}",
+            ])
+
+        deltas_md_path = os.path.join(out_dir, "summary_deltas_vs_base.md")
+        write_markdown_table(
+            deltas_md_path,
+            header=["Condition", "ΔAccuracy (ppts)", "ΔTime (s)"],
+            rows=deltas_md_rows,
+        )
+
+    # -----------------------------
+    # 5) Per-run details (JSONL)
+    # -----------------------------
+    # One file with all runs, each line is:
+    # { "dataset": ..., "condition": ..., "run_index": ..., <original run fields> }
+    runs_details_path = os.path.join(runs_dir, "runs_details.jsonl")
+    with open(runs_details_path, "w", encoding="utf-8") as f:
+        for dataset_name, conds in results.items():
+            for cond_name, records in conds.items():
+                for idx, rec in enumerate(records):
+                    row = {
+                        "dataset": dataset_name,
+                        "condition": cond_name,
+                        "run_index": idx,
+                        **rec,
+                    }
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    print(f"\nSaved summaries and run details under: {out_dir}\n")
+
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Multi-agent math benchmark")
@@ -252,7 +430,7 @@ def main() -> None:
     if reset_logs:
         if os.path.exists(RUN_LOG_PATH):
             os.remove(RUN_LOG_PATH)
-
+            
     run_benchmark(suite=args.suite, num_agents=args.n)
 
 

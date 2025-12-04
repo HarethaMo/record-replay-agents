@@ -1,0 +1,10 @@
+{
+  "stochastic_no_rr": {
+    "delta_accuracy_ppts": -60.00000000000001,
+    "delta_time": -19.900471162796016
+  },
+  "stochastic_rr": {
+    "delta_accuracy_ppts": -40.0,
+    "delta_time": -19.900471162796016
+  }
+}

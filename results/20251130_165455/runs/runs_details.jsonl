@@ -1,0 +1,15 @@
+{"dataset": "basic_math", "condition": "base", "run_index": 0, "success": true, "time": 18.393030881881714}
+{"dataset": "basic_math", "condition": "base", "run_index": 1, "success": true, "time": 22.622060537338257}
+{"dataset": "basic_math", "condition": "base", "run_index": 2, "success": true, "time": 24.142427682876587}
+{"dataset": "basic_math", "condition": "base", "run_index": 3, "success": true, "time": 38.449793577194214}
+{"dataset": "basic_math", "condition": "base", "run_index": 4, "success": true, "time": 24.448971271514893}
+{"dataset": "basic_math", "condition": "stochastic_no_rr", "run_index": 0, "success": false, "time": 7.1718809604644775}
+{"dataset": "basic_math", "condition": "stochastic_no_rr", "run_index": 1, "success": true, "time": 15.713866472244263}
+{"dataset": "basic_math", "condition": "stochastic_no_rr", "run_index": 2, "success": false, "time": 22.90678572654724}
+{"dataset": "basic_math", "condition": "stochastic_no_rr", "run_index": 3, "success": false, "time": 12.319130659103394}
+{"dataset": "basic_math", "condition": "stochastic_no_rr", "run_index": 4, "success": false, "time": 9.264370203018188}
+{"dataset": "basic_math", "condition": "stochastic_rr", "run_index": 0, "success": false, "time": 6.0525267124176025}
+{"dataset": "basic_math", "condition": "stochastic_rr", "run_index": 1, "success": false, "time": 8.63233733177185}
+{"dataset": "basic_math", "condition": "stochastic_rr", "run_index": 2, "success": true, "time": 7.413967609405518}
+{"dataset": "basic_math", "condition": "stochastic_rr", "run_index": 3, "success": false, "time": 11.427189350128174}
+{"dataset": "basic_math", "condition": "stochastic_rr", "run_index": 4, "success": true, "time": 6.5952112674713135}

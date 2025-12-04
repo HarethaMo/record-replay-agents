@@ -3,7 +3,9 @@
 import os
 from dataclasses import dataclass
 from typing import Literal
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # LLM backends
@@ -46,44 +48,55 @@ BASE_BACKEND = LLMBackendConfig(
     provider=os.getenv("BASE_PROVIDER", "transformers"),  # "openai" or "transformers"
     base_url=os.getenv("BASE_LLM_BASE_URL", ""),          # unused for transformers
     api_key=os.getenv("BASE_LLM_API_KEY", ""),            # unused for transformers
-    model=os.getenv("BASE_MODEL_NAME", "Qwen/Qwen2.5-3B-Instruct"),
+    # model=os.getenv("BASE_MODEL_NAME", "Qwen/Qwen2.5-3B-Instruct"),
+    model=os.getenv("BASE_MODEL_NAME", "Qwen/Qwen3-4B-Instruct-2507"),
 )
 
 LARGE_BACKEND = LLMBackendConfig(
     provider=os.getenv("BASE_PROVIDER", "transformers"),  # "openai" or "transformers"
     base_url=os.getenv("BASE_LLM_BASE_URL", ""),          # unused for transformers
     api_key=os.getenv("BASE_LLM_API_KEY", ""),            # unused for transformers
-    model=os.getenv("BASE_MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct"),
+    # model=os.getenv("BASE_MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct"),
+    model=os.getenv("BASE_MODEL_NAME", "Qwen/Qwen3-30B-A3B-Instruct-2507"),
+    
 )
 
-OpenAI_BACKEND = LLMBackendConfig(
+LARGE_OPENAI_BACKEND = LLMBackendConfig(
     provider=os.getenv("OpenAI_PROVIDER", "openai"),
     base_url=os.getenv("OpenAI_LLM_BASE_URL", "https://api.openai.com/v1"),
-    api_key=os.getenv("OpenAI_LLM_API_KEY", os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_KEY")),
+    api_key=os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_KEY"),
     model=os.getenv("OpenAI_MODEL_NAME", "gpt-5"),
 )
 
+MINI_OPENAI_BACKEND = LLMBackendConfig(
+    provider=os.getenv("OpenAI_PROVIDER", "openai"),
+    base_url=os.getenv("OpenAI_LLM_BASE_URL", "https://api.openai.com/v1"),
+    api_key=os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_KEY"),
+    model=os.getenv("OpenAI_MODEL_NAME", "gpt-5-nano"),
+)
 
 # ---------------------------------------------------------------------------
 # Experiment knobs
 # ---------------------------------------------------------------------------
 
 # Number of agents / steps to use in the decomposition.
-DEFAULT_NUM_AGENTS: int = int(os.getenv("NUM_AGENTS", "3"))
+DEFAULT_NUM_AGENTS: int = int(os.getenv("NUM_AGENTS", "5"))
 
 # Probability of forcing a stochastic failure in mode="stochastic".
-STOCHASTIC_FAIL_PROB: float = float(os.getenv("STOCHASTIC_FAIL_PROB", "0.2"))
+STOCHASTIC_FAIL_PROB: float = float(os.getenv("STOCHASTIC_FAIL_PROB", "0.1"))
+STOCHASTIC_DELAY_MIN = 2.0
+STOCHASTIC_DELAY_MAX = 5.0
 
 # Max retries per step (for logical failures and stochastic forced retries).
 MAX_RETRIES_PER_STEP: int = int(os.getenv("MAX_RETRIES_PER_STEP", "3"))
 
 # Maximum tokens for each LLM call in different roles.
-COORDINATOR_MAX_TOKENS: int = int(os.getenv("COORDINATOR_MAX_TOKENS", "512"))
-STEP_AGENT_MAX_TOKENS: int = int(os.getenv("STEP_AGENT_MAX_TOKENS", "512"))
-EVALUATOR_MAX_TOKENS: int = int(os.getenv("EVALUATOR_MAX_TOKENS", "512"))
+COORDINATOR_MAX_TOKENS: int = int(os.getenv("COORDINATOR_MAX_TOKENS", "1024"))
+STEP_AGENT_MAX_TOKENS: int = int(os.getenv("STEP_AGENT_MAX_TOKENS", "1024"))
+EVALUATOR_MAX_TOKENS: int = int(os.getenv("EVALUATOR_MAX_TOKENS", "1024"))
 
 # Base parameters for the step agents.
-BASE_TEMPERATURE: float = float(os.getenv("BASE_TEMPERATURE", "0.1"))
+BASE_TEMPERATURE: float = float(os.getenv("BASE_TEMPERATURE", "0.0"))
 BASE_TOP_P: float = float(os.getenv("BASE_TOP_P", "1.0"))
 
 # Parameters for the "prompt change" strategy (think more).

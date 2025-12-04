@@ -44,6 +44,8 @@ class Coordinator:
             f"Problem:\n{problem}\n\n"
             f"Decompose this problem into AT MOST {num_steps} numbered steps. "
             "A step can have one or more mathematical operations.\n"
+            "A step must AT LEAST have one mathematical operation. If you cannot decompose it further, "
+            "you can return a number of steps that is less than the requested number.\n"
             "Return them as a list, one per line, in the form:\n"
             "1. ...\n2. ...\n...\n"
             "Do NOT include any extra text or explanation. Output ONLY the steps.\n"
@@ -86,9 +88,6 @@ class Coordinator:
         # Ensure we have exactly num_steps (truncate or pad if necessary)
         if len(steps) > num_steps:
             steps = steps[:num_steps]
-        elif len(steps) < num_steps:
-            while len(steps) < num_steps:
-                steps.append(f"Fallback step {len(steps)+1}: compute any missing values.")
 
         trace = CoordinatorTrace(
             messages=messages,
